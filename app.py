@@ -6,17 +6,18 @@ import math
 from flask import Flask, request
 from ultralytics import YOLO
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'static/uploads'
+image_result = []
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
 
 
 def model_testing(uploaded_files):
@@ -71,77 +72,15 @@ def model_testing(uploaded_files):
             plt.savefig(f'static/results/saved_image{idx}.png')
             plt.close()
 
+    saved_image_paths = [f'saved_image{idx}.png' for idx in
+                         range(2)]  # Change the range according to actual saved images
 
-    quantities = [1, 2, 3, 4, 1, 2]
+    # Rest of your code...
 
-    for idx, results in enumerate([s, s_test]):
-        detected_boxes = []
-        for img_result in results:
-            for i in range(len(img_result.boxes)):
-                x = img_result.boxes[i]
-                cords = x.xyxy[0].tolist()
-                y1, y2 = int(cords[1]), int(cords[3])
-                x1, x2 = int(cords[0]), int(cords[2])
-                height = y2 - y1
-                detected_boxes.append({
-                    'x1': x1,
-                    'x2': x2,
-                    'dx': x2 - x1,
-                    'y1': y1,
-                    'y2': y2,
-                    'height': height
-                })
-
-        sorted_boxes = sorted(detected_boxes, key=lambda box: box['x1'])
-
-        for index, box in enumerate(sorted_boxes):
-            box_name = string.ascii_uppercase[index]
-            box['name'] = box_name
-            box['quantity'] = quantities[index]
-
-        csv_file_path = f'detected_boxes_{idx}.csv'
-        with open(csv_file_path, mode='w', newline='') as file:
-            fieldnames = ['name', 'x1', 'x2', 'dx', 'y1', 'y2', 'height', 'quantity']
-            writer = csv.DictWriter(file, fieldnames=fieldnames)
-            writer.writeheader()
-            for box in sorted_boxes:
-                writer.writerow(box)
-
-        print(f"CSV file created successfully at: {csv_file_path}")
-
-    existing_boxes = []
-    with open('detected_boxes_0.csv', mode='r') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            existing_boxes.append(row)
-
-    changed_boxes = []
-    offsets_to_check = [0, 1, 2, 3, 4, 5, 6]
-
-    for new_box in detected_boxes[1:]:
-        for old_box in existing_boxes:
-            old_x1 = int(old_box['x1'])
-            new_x1 = int(new_box['x1'])
-            old_height = int(old_box['height'])
-            old_quantity = int(old_box['quantity'])
-            new_quantity = int(new_box['quantity'])
-
-            if any(new_x1 == old_x1 - offset or new_x1 == old_x1 + offset for offset in offsets_to_check) \
-                    and abs(int(new_box['height']) - old_height) > 10:
-
-                quantity_change = math.floor(float((int(old_height - new_box['height'])) / (old_height / old_quantity)))
-                changed_quantity = old_quantity - quantity_change
-                new_box['quantity'] = str(new_quantity + quantity_change)
-                changed_boxes.append(old_box['name'])
-
-        changed_medicines = list(set(changed_boxes))
-
-    print("Medicines with significant height changes: ", changed_medicines)
-    print("New Height: ", changed_quantity)
-    return detected_boxes
+    return saved_image_paths  # Return the file paths or names of saved images
 
 
-
+@app.route('/', methods=['GET', 'POST'])
 def update_changed_quantities(detected_boxes):
     # ... (code for model_testing function remains unchanged)
 
@@ -188,8 +127,8 @@ def update_changed_quantities(detected_boxes):
     print(f"Updated CSV file created successfully at: {updated_csv_file_path}")
 
 
-@app.route('/', methods=['GET', 'POST'])
 def upload_file():
+    images_result = ''
     uploaded_files = []
     if request.method == 'POST':
         if 'file' not in request.files:
@@ -207,11 +146,17 @@ def upload_file():
 
         print("Uploaded:", uploaded_files)
 
-    images_html = ''.join([f'<img src="{file}" alt="Uploaded Image" style="max-width: 500px; margin: 10px;">' for file in uploaded_files])
+    images_html = ''.join(
+        [f'<img src="{file}" alt="Uploaded Image" style="max-width: 500px; margin: 10px;">' for file in uploaded_files])
 
     if len(uploaded_files) >= 2:
         detected_boxes = model_testing(uploaded_files)
+
+        folder_path = 'static/results'  # Path to the folder where images are saved
+        for image_path in detected_boxes:
+            images_result += f'<img src="{folder_path}/{image_path}" alt="Detected Image">'
         update_changed_quantities(detected_boxes)
+        # Add other functionalities here if needed
 
     return f'''
     <!DOCTYPE html>
@@ -278,11 +223,18 @@ def upload_file():
             <h2>Uploaded Images:</h2>
             {images_html}
         </div>
+        </br>
+        <div class="uploaded-images">
+        <h2>Detection Results:</h2>
+        {images_result}
+        </div>
+        <div class="Detection-Results">
+            <!-- Other HTML content goes here -->
+        </div>
     </body>
     </html>
     '''
 
+
 if __name__ == '__main__':
     app.run(debug=True)
-
-
